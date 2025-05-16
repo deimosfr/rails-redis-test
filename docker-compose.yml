@@ -19,6 +19,10 @@ services:
       - "3000:3000"
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - RAILS_LOG_LEVEL=debug
+      - RAILS_LOG_TO_STDOUT=true
+      - STDOUT_SYNC=true
+      - STDERR_SYNC=true
     depends_on:
       redis:
         condition: service_healthy

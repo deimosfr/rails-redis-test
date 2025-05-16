@@ -1,7 +1,12 @@
 class RedisDemoController < ApplicationController
   def index
-    puts "\n\n===== REDIS OPERATIONS START ====="
-    $stdout.flush  # Ensure output is flushed immediately
+    # Use direct STDOUT to ensure visibility in Docker logs
+    STDOUT.puts "\n\n===== REDIS OPERATIONS START ====="
+    STDOUT.flush  # Ensure output is flushed immediately
+    
+    # Also write to stderr to maximize chances of visibility
+    $stderr.puts "\n\n===== REDIS OPERATIONS LOG (STDERR) ====="
+    $stderr.flush  # Ensure stderr is flushed immediately
     
     # Create a log array to store operations
     logs = []
@@ -37,6 +42,8 @@ class RedisDemoController < ApplicationController
         log_message = "[#{timestamp}][#{count}] Inserting random key-value pair: #{random_key}=#{random_value}"
         STDOUT.puts log_message
         STDOUT.flush  # Force immediate output
+        $stderr.puts "STDERR: #{log_message}"
+        $stderr.flush  # Force immediate stderr output
         
         # Insert the random key-value pair into Redis
         REDIS.set(random_key, random_value)
@@ -46,27 +53,37 @@ class RedisDemoController < ApplicationController
         log_message = "[#{timestamp}][#{count}] Retrieved value for #{random_key}: #{retrieved_value}"
         STDOUT.puts log_message
         STDOUT.flush
+        $stderr.puts "STDERR: #{log_message}"
+        $stderr.flush
         
         # Delete the key
         REDIS.del(random_key)
         log_message = "[#{timestamp}][#{count}] Deleted key: #{random_key}"
         STDOUT.puts log_message
         STDOUT.flush
+        $stderr.puts "STDERR: #{log_message}"
+        $stderr.flush
         
         # Verify deletion
         if REDIS.get(random_key).nil?
           log_message = "[#{timestamp}][#{count}] Confirmed key deletion: #{random_key} no longer exists"
           STDOUT.puts log_message
           STDOUT.flush
+          $stderr.puts "STDERR: #{log_message}"
+          $stderr.flush
         else
           log_message = "[#{timestamp}][#{count}] Failed to delete key: #{random_key}"
           STDOUT.puts log_message
           STDOUT.flush
+          $stderr.puts "STDERR: #{log_message}"
+          $stderr.flush
         end
         
         log_message = "[#{timestamp}][#{count}] Sleeping for 1 second..."
         STDOUT.puts log_message
         STDOUT.flush
+        $stderr.puts "STDERR: #{log_message}"
+        $stderr.flush
         
         # Print a separator line to make the output more readable
         STDOUT.puts "-" * 80
