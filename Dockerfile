@@ -1,75 +1,77 @@
-FROM ruby:3.2.2-slim
+# syntax=docker/dockerfile:1
+# check=error=true
 
-# Set environment variables
-ENV RAILS_ENV=production
-ENV RAILS_LOG_TO_STDOUT=true
-ENV RAILS_SERVE_STATIC_FILES=true
-ENV RAILS_LOG_LEVEL=debug
-# Force immediate output for better visibility
-ENV STDOUT_SYNC=true
-ENV STDERR_SYNC=true
+# This Dockerfile is designed for production, not development. Use with Kamal or build'n'run by hand:
+# docker build -t charles_rails_vscode .
+# docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name charles_rails_vscode charles_rails_vscode
 
-# Install dependencies
-RUN apt-get update -qq && apt-get install -y \
-    build-essential \
-    libsqlite3-dev \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
 
-# Create application directory
-WORKDIR /app
+# Make sure RUBY_VERSION matches the Ruby version in .ruby-version
+ARG RUBY_VERSION=3.2.2
+FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
 
-# Copy Gemfile and Gemfile.lock
+# Rails app lives here
+WORKDIR /rails
+
+# Install base packages
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y curl libjemalloc2 libvips sqlite3 && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# Set production environment
+ENV RAILS_ENV="production" \
+    BUNDLE_PATH="/usr/local/bundle" \
+    BUNDLE_WITHOUT="development" \
+    REDIS_URL="redis://redis:6379/0"
+
+# Throw-away build stage to reduce size of final image
+FROM base AS build
+
+# Install packages needed to build gems
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y build-essential git libyaml-dev pkg-config && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# Install application gems
 COPY Gemfile Gemfile.lock ./
+# Set deployment mode after we have the lockfile
+RUN bundle config set --local deployment 'true' && \
+    bundle config set --local without 'development test' && \
+    bundle config set --local build.nokogiri --use-system-libraries && \
+    bundle config set --local force_ruby_platform true && \
+    bundle install && \
+    rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git && \
+    bundle exec bootsnap precompile --gemfile
 
-# Install gems
-RUN bundle install --without development test
-
-# Copy the rest of the application
+# Copy application code
 COPY . .
 
-# Expose port 3000
-EXPOSE 3000
+# Precompile bootsnap code for faster boot times
+RUN bundle exec bootsnap precompile app/ lib/
 
-# Create entrypoint script
-RUN echo '#!/bin/bash\n\
-    echo "===== Starting Rails App with Redis ====="\n\
-    echo "REDIS_URL: $REDIS_URL"\n\
-    \n\
-    # Handle SECRET_KEY_BASE\n\
-    if [ -z "$SECRET_KEY_BASE" ]; then\n\
-    export SECRET_KEY_BASE=$(openssl rand -hex 64)\n\
-    echo "Generated a random SECRET_KEY_BASE"\n\
-    else\n\
-    echo "Using SECRET_KEY_BASE from environment variable"\n\
-    fi\n\
-    \n\
-    # Make sure logging environment variables are set\n\
-    export RAILS_LOG_TO_STDOUT=true\n\
-    export STDOUT_SYNC=true\n\
-    export STDERR_SYNC=true\n\
-    export RAILS_LOG_LEVEL=${RAILS_LOG_LEVEL:-debug}\n\
-    \n\
-    echo "Starting Rails server with enhanced logging..."\n\
-    \n\
-    # Use unbuffer to ensure output is shown immediately\n\
-    rails server -b 0.0.0.0 &\n\
-    SERVER_PID=$!\n\
-    \n\
-    sleep 3\n\
-    \n\
-    echo "===== Triggering Redis Operations ====="\n\
-    # Show the output from curl instead of discarding it\n\
-    curl -s http://localhost:3000 &\n\
-    \n\
-    echo "Redis operations now running continuously."\n\
-    echo "All Redis operations should be visible in the logs below."\n\
-    echo "Press Ctrl+C to stop."\n\
-    echo "======================================"\n\
-    \n\
-    # Wait for the server process to finish\n\
-    wait $SERVER_PID\n\
-    ' > /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
+# Precompiling assets for production without requiring secret RAILS_MASTER_KEY
+RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
-# Set entrypoint
-ENTRYPOINT ["/app/docker-entrypoint.sh"] 
+
+
+
+# Final stage for app image
+FROM base
+
+# Copy built artifacts: gems, application
+COPY --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
+COPY --from=build /rails /rails
+
+# Run and own only the runtime files as a non-root user for security
+RUN groupadd --system --gid 1000 rails && \
+    useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash && \
+    chown -R rails:rails db log storage tmp
+USER 1000:1000
+
+# Entrypoint prepares the database.
+ENTRYPOINT ["/rails/bin/docker-entrypoint"]
+
+# Start server via Thruster by default, this can be overwritten at runtime
+EXPOSE 80
+CMD ["./bin/thrust", "./bin/rails", "server"]

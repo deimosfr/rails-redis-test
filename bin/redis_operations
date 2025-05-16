@@ -1,0 +1,97 @@
+#!/usr/bin/env ruby
+require 'redis'
+require 'securerandom'
+require 'optparse'
+
+# Default options
+options = {
+  redis_url: ENV['REDIS_URL'] || 'redis://localhost:6379',
+  interval: 1,
+  count: nil
+}
+
+# Parse command line options
+OptionParser.new do |opts|
+  opts.banner = "Usage: bin/redis_operations [options]"
+  
+  opts.on("-u", "--url URL", "Redis URL (default: #{options[:redis_url]})") do |url|
+    options[:redis_url] = url
+  end
+  
+  opts.on("-i", "--interval SECONDS", Float, "Interval between operations (default: #{options[:interval]} seconds)") do |interval|
+    options[:interval] = interval
+  end
+  
+  opts.on("-c", "--count NUMBER", Integer, "Number of operations to perform (default: infinite)") do |count|
+    options[:count] = count
+  end
+  
+  opts.on("-h", "--help", "Show this help message") do
+    puts opts
+    exit
+  end
+end.parse!
+
+# Connect to Redis
+puts "Connecting to Redis at #{options[:redis_url]}..."
+redis = Redis.new(url: options[:redis_url])
+
+# Test connection
+begin
+  redis.ping
+  puts "Connected successfully!"
+rescue Redis::BaseError => e
+  puts "Failed to connect: #{e.message}"
+  exit 1
+end
+
+# Run operations
+counter = 0
+puts "Starting Redis operations (Ctrl+C to stop)"
+puts "---------------------------------------"
+
+loop do
+  key = "key_#{SecureRandom.hex(8)}"
+  value = "value_#{SecureRandom.hex(16)}"
+  counter += 1
+  
+  begin
+    # SET operation
+    redis.set(key, value)
+    puts "[#{counter}] SET: #{key} => #{value}"
+    
+    # GET operation
+    retrieved_value = redis.get(key)
+    puts "[#{counter}] GET: #{key} => #{retrieved_value}"
+    
+    # Verify value
+    if retrieved_value == value
+      puts "[#{counter}] VERIFY: Success! ✓"
+    else
+      puts "[#{counter}] VERIFY: FAILED! Expected '#{value}', got '#{retrieved_value}' ✗"
+    end
+    
+    # DELETE operation
+    redis.del(key)
+    puts "[#{counter}] DEL: #{key} => Key deleted"
+    
+    # Verify deletion
+    if redis.get(key).nil?
+      puts "[#{counter}] VERIFY deletion: Success! Key no longer exists ✓"
+    else
+      puts "[#{counter}] VERIFY deletion: FAILED! Key still exists ✗"
+    end
+    puts "---------------------------------------"
+  rescue Redis::BaseError => e
+    puts "[#{counter}] ERROR: #{e.message}"
+  end
+  
+  # Exit if count limit reached
+  if options[:count] && counter >= options[:count]
+    puts "Completed #{counter} operations. Exiting."
+    break
+  end
+  
+  # Sleep interval
+  sleep options[:interval]
+end

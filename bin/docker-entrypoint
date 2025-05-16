@@ -1,0 +1,21 @@
+#!/bin/bash -e
+
+# Enable jemalloc for reduced memory usage and latency.
+if [ -z "${LD_PRELOAD+x}" ]; then
+    LD_PRELOAD=$(find /usr/lib -name libjemalloc.so.2 -print -quit)
+    export LD_PRELOAD
+fi
+
+# If running the rails server then create or migrate existing database
+if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
+  ./bin/rails db:prepare
+  
+  # Start Redis operations in background if REDIS_OPERATIONS_ENABLED is set to true
+  if [ "${REDIS_OPERATIONS_ENABLED}" == "true" ]; then
+    echo "Starting Redis continuous operations in background (REDIS_URL: ${REDIS_URL})..."
+    ./bin/rails redis:continuous_operations > /rails/log/redis_operations.log 2>&1 &
+    echo "Redis operations started with PID: $!"
+  fi
+fi
+
+exec "${@}"

@@ -1,57 +1,81 @@
-# Redis Demo Rails Application
+# Rails Redis Operations App
 
-This is a simple Rails application that demonstrates Redis operations. It connects to Redis via an environment variable, inserts a random key-value pair, reads it, and then deletes it, all while logging the operations.
+A Rails application that connects to Redis 7 and performs continuous set/get/delete operations with random keys and values every second.
 
-## Prerequisites
+## Features
 
-- Ruby 3.2.2 (or compatible version)
-- Rails 8.0.2
-- Docker (for running Redis)
+- Connects to Redis 7 using environment variables
+- Performs set/get/delete operations with random keys every second
+- Web interface to check Redis connection status
+- Docker and docker-compose support for easy deployment
 
-## Redis Gems
+## Redis Libraries Used
 
-This application uses the following Redis gems with specific versions:
+- [redis-rb](https://github.com/redis/redis-rb) v5.3.0
+- [redis-client](https://github.com/redis-rb/redis-client) v0.22.0
 
-- redis 5.3.0
-- redis-client 0.22.0
+## Environment Variables
 
-## Setup
+- `REDIS_URL`: Redis connection URL (default: `redis://localhost:6379`)
+- `REDIS_OPERATIONS_ENABLED`: Set to `true` to enable continuous Redis operations (used in Docker)
 
-1. Clone the repository
-2. Install dependencies:
-   ```
-   bundle install
-   ```
-3. Start Redis using Docker:
-   ```
-   docker build -t my-redis -f ../Dockerfile ..
-   docker run -d -p 6379:6379 --name redis-container my-redis
-   ```
-4. Start the Rails application:
-   ```
-   ./bin/start_with_redis.sh
-   ```
+## Running with Docker Compose
 
-## How It Works
+The easiest way to run the application is using Docker Compose:
 
-When you visit the root URL or `/redis_demo`, the application will:
+```bash
+# Generate a Rails master key if you don't have one
+echo $(openssl rand -hex 16) > config/master.key
 
-1. Generate a random key and value
-2. Insert it into Redis
-3. Read it back from Redis
-4. Delete it from Redis
-5. Verify the deletion
-6. Log all operations
+# Set the master key as an environment variable
+export RAILS_MASTER_KEY=$(cat config/master.key)
 
-Check the Rails logs to see the operations in action.
+# Make sure the Gemfile.lock includes Linux platforms
+bundle lock --add-platform aarch64-linux x86_64-linux
 
-## Redis Environment Variable
-
-The application uses the `REDIS_URL` environment variable to connect to Redis. The default value is set to `redis://localhost:6379/0` if the environment variable is not provided.
-
-You can customize the Redis connection by setting the `REDIS_URL` environment variable before starting the application:
-
+# Build and start the containers
+docker-compose up --build
 ```
-export REDIS_URL="redis://your-redis-host:port/db"
-./bin/start_with_redis.sh
+
+The application will be available at http://localhost:3000
+
+## Running Manually
+
+### Prerequisites
+
+- Ruby 3.2.2
+- Redis 7
+
+### Setup
+
+1. Install dependencies:
+```bash
+bundle install
+```
+
+2. Start the Rails server:
+```bash
+REDIS_URL=redis://localhost:6379 rails server
+```
+
+3. In a separate terminal, run the continuous Redis operations:
+```bash
+rails redis:continuous_operations
+```
+
+## Docker
+
+You can also build and run just the Docker container:
+
+```bash
+# Build the Docker image
+docker build -t rails-redis-operations .
+
+# Run the container
+docker run -d -p 3000:80 \
+  -e RAILS_MASTER_KEY=$(cat config/master.key) \
+  -e REDIS_URL=redis://your-redis-host:6379 \
+  -e REDIS_OPERATIONS_ENABLED=true \
+  --name rails-redis-app \
+  rails-redis-operations
 ```

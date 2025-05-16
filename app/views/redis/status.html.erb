@@ -1,0 +1,36 @@
+<h1>Redis Status</h1>
+
+<p>
+  <strong>Connection URL:</strong> <%= @redis_url %><br>
+  <strong>Status:</strong> <%= @status %>
+</p>
+
+<% if @operation[:success] %>
+  <h2>Last Operation</h2>
+  <p>Successfully performed SET/GET/DELETE operation with key: <%= @operation[:key] %></p>
+<% else %>
+  <h2>Last Operation Failed</h2>
+  <p>Error: <%= @operation[:error] %></p>
+<% end %>
+
+<h2>Redis Info</h2>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Key</th>
+      <th>Value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <% @redis_info.each do |key, value| %>
+      <tr>
+        <td><%= key %></td>
+        <td><%= value %></td>
+      </tr>
+    <% end %>
+  </tbody>
+</table>
+
+<p>
+  <small>Note: In the background, the application is continuously performing SET/GET/DELETE operations every second.</small>
+</p>
